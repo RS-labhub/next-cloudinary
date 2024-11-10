@@ -10,28 +10,45 @@ export interface PollForProcessingImageOptions {
   src: string;
 }
 
-export async function pollForProcessingImage(options: PollForProcessingImageOptions): Promise<boolean> {
+/**
+ * Poll for an image that hasn't finished processing.
+ * Will call itself recurisvely until an image is found, or it fails to fetch.
+ */
+export interface PollForProcessingImageResponse {
+  status: number;
+  success: boolean;
+  error?: string;
+}
+
+export async function pollForProcessingImage(options: PollForProcessingImageOptions): Promise<PollForProcessingImageResponse> {
   const { src } = options;
   try {
-    await new Promise((resolve, reject) => {
-      fetch(src).then(res => {
-        if ( !res.ok ) {
-          reject(res);
-          return;
-        }
-        resolve(res);
-      });
-    });
-  } catch(e: any) {
-    // Timeout for 200ms before trying to fetch again to avoid overwhelming requests
+    const response = await fetch(src);
 
-    if ( e.status === 423 ) {
-      await new Promise((resolve) => setTimeout(() => resolve(undefined), 200));
-      return await pollForProcessingImage(options);
+    if (!response.ok) {
+      if (response.status === 423) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        return await pollForProcessingImage(options);
+      }
+      return {
+        success: false,
+        status: response.status,
+        error: response.statusText || "Failed to fetch the image",
+      };
     }
-    return false;
+
+    return {
+      success: true,
+      status: response.status,
+    };
+
+  } catch (error) {
+    return {
+      success: false,
+      status: 500,
+      error: (error as Error).message || "Network error",
+    };
   }
-  return true;
 }
 
 /**
